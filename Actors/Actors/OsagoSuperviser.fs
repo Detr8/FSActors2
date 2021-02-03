@@ -9,6 +9,27 @@ open Messages
 open Akka.Actor
 
 
+let OsagoCardProcessorActorFactory 
+    (logger:ILogger) 
+    (initialState:OsagoStateItem) 
+    (msg:ExchangeMessage) 
+    (mailbox:Actor<ExchangeMessage>)=
+
+    let getCmdProcessorActor (mailbox:Actor<ExchangeMessage>) cmdName=
+        let actorRef= mailbox.Context.Child(cmdName)
+        let cmdProcessorHandler=getHandler cmdName
+        if actorRef.IsNobody() then (cmdProcessorHandler |> spawn mailbox cmdName)
+        else actorRef
+
+    let rec imp (state)=
+        actor{
+            let! msg=mailbox.Receive()
+            let cmdActor=getCmdProcessorActor mailbox msg.Name
+            cmdActor <! msg
+        }
+
+
+
 let OsagoSuperviserHandler (logger:ILogger) (state:OsagoStateItem list) (msg:ExchangeMessage)=
     //parse messageName
     //find processor or create it
@@ -39,7 +60,8 @@ let OsagoSuperviserActor (cardProcessorHandler) (logger:ILogger) (mailbox:Actor<
 
     let rec imp (state:OsagoStateItem list)=
         actor{
-            let! msg=mailbox.Receive()            
+            let! msg=mailbox.Receive()
+                        
             let cardProcessor=getCardProcessorActor mailbox msg.TraceId
 
             let newState=OsagoSuperviserHandler logger state msg //mutate state
