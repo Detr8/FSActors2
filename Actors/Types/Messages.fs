@@ -5,12 +5,27 @@ open Akka.Actor
 
 
 type Commands=
+    |SaveCard
+    |FastCalc
+    |FullCalc
+    |PolicyIssue
+    |RefreshPayUrl
+    |GetFiles
+
+type CommandResults=
+    |ICFastCalcResult
+    |ICFullCalcResult
+    |PolicyIssueResult
+    |SaveCardResult
+
+type HighLevelCommands=
     |CreateAndCalc
     |CreateAndIssue
-    |FastCalcResult
-    |FullCalcResult
-    |IssueResult
-    |CommissionComputedResult
+
+type Message=
+    |HighLevelCommand of HighLevelCommands
+    |CommandResult of CommandResults
+    |OsagoCommand of Commands
 
 
 type ExchangeMessage={

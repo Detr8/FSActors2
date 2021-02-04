@@ -15,9 +15,11 @@ let OsagoCardProcessorActorFactory
     (msg:ExchangeMessage) 
     (mailbox:Actor<ExchangeMessage>)=
 
+    
+
     let getCmdProcessorActor (mailbox:Actor<ExchangeMessage>) cmdName=
         let actorRef= mailbox.Context.Child(cmdName)
-        let cmdProcessorHandler=getHandler cmdName
+        let cmdProcessorHandler=getCmdHandler cmdName
         if actorRef.IsNobody() then (cmdProcessorHandler |> spawn mailbox cmdName)
         else actorRef
 
@@ -26,7 +28,11 @@ let OsagoCardProcessorActorFactory
             let! msg=mailbox.Receive()
             let cmdActor=getCmdProcessorActor mailbox msg.Name
             cmdActor <! msg
+            
+            return! imp state
         }
+
+    imp initialState
 
 
 
