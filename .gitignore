@@ -320,3 +320,6 @@ dist/
 Osago.ICService/Osago.ICService/appsettings.Ujeen.json
 Osago.App/Osago.Web/appsettings.Ujeen.json
 Osago.App/Osago.Core/Services/Api/package-lock.json
+
+/Actors/appsettings.Development.json
+/Actors/appsettings.M.json

@@ -3,6 +3,8 @@
 open RabbitMQ.Client
 open RabbitMQ.Client.Events
 open System.Text
+open Akka.FSharp
+open Akka.Actor
 
 module MainWorker=
    open Microsoft.Extensions.Logging
@@ -10,8 +12,10 @@ module MainWorker=
    open Microsoft.Extensions.Hosting
    open System
    open System.Threading.Tasks 
+   open FsUtils
+   open Messages
 
-   type MainWorker(logger: ILogger<MainWorker>, config: IConfiguration)=
+   type MainWorker(logger: ILogger<MainWorker>, config: IConfiguration, system: ActorSystem)=
    //system: ActorSystem,
    //autoModels: AutoModels.AutoModelsClient) =
         inherit BackgroundService()
@@ -38,6 +42,8 @@ module MainWorker=
             printfn "MainWorker is working..."
             channel.QueueDeclare(listenQueue, false, false, false, null) |> ignore
             printfn $"Listening %s{listenQueue} stream"
+            
+            let actor=(OsagoSuperviser.OsagoSuperviserActor logger) |> spawn system "super"
 
             let f: Async<unit> =
                 async {
@@ -47,7 +53,9 @@ module MainWorker=
                         use logScope=logger.BeginScope("{action}", "OsagoProcessing")
                         logger.LogInformation($"A new command %s{jsonStr}")
 
+                        let msg=JsonUtils.Deserialize<ExchangeMessage> jsonStr
 
+                        actor <! msg
                         (*
                             main actor has state with cardProcessors by traceId
                             when a new message has been recieved -> 
@@ -61,6 +69,8 @@ module MainWorker=
                             3. cmdProcessors
                         *)
                     )
+
+                    channel.BasicConsume(listenQueue, true, consumer) |> ignore
 
                 }
             Async.StartAsTask f :> Task

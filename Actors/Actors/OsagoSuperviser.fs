@@ -1,81 +1,65 @@
-﻿
-
-
-module OsagoSuperviser
+﻿module OsagoSuperviser
 open System
 open Microsoft.Extensions.Logging
 open Akka.FSharp
 open Messages
 open Akka.Actor
 
+let findOrCreateChildActor name handler (mailbox: Actor<ExchangeMessage>)=
+    let existingActor=mailbox.Context.Child(name)
+    if existingActor.IsNobody() then (handler |> spawn mailbox name)
+    else existingActor
 
-let OsagoCardProcessorActorFactory 
-    (logger:ILogger) 
-    (initialState:OsagoStateItem) 
-    (msg:ExchangeMessage) 
-    (mailbox:Actor<ExchangeMessage>)=
+let cmdActorHandler (logger:ILogger) state (mailbox:Actor<ExchangeMessage>)=
+    let rec loop state=actor{
+        let! message = mailbox.Receive ()
+        logger.LogInformation("A new cmdmessage in cmdActor {message}", message)
+        let enrichMsg={message with Name="enrich"}
+        mailbox.Context.Parent <! enrichMsg
 
-    
+        return! loop state
+    }
+    loop state
 
-    let getCmdProcessorActor (mailbox:Actor<ExchangeMessage>) cmdName=
-        let actorRef= mailbox.Context.Child(cmdName)
-        let cmdProcessorHandler=getCmdHandler cmdName
-        if actorRef.IsNobody() then (cmdProcessorHandler |> spawn mailbox cmdName)
-        else actorRef
+let getCmdActor (logger:ILogger) state message (mailbox: Actor<ExchangeMessage>) =  
+    findOrCreateChildActor message.Name (cmdActorHandler logger state) mailbox
 
-    let rec imp (state)=
-        actor{
-            let! msg=mailbox.Receive()
-            let cmdActor=getCmdProcessorActor mailbox msg.Name
-            cmdActor <! msg
-            
-            return! imp state
-        }
+let cardProcessorHandler (logger:ILogger) initialState (mailbox: Actor<ExchangeMessage>) = 
+    let rec loop state = actor {
+        let! message = mailbox.Receive ()      
+        logger.LogInformation("A new cmdmessage in cardProcessor {message}", message)
+        if message.Name="enrich" then 
+            printfn $"enrich state for %s{message.TraceId}"
+            return! loop {state with LastUpdateDate=DateTime.Now} //enrich body
+        
+        let cmdActor=getCmdActor logger state message mailbox
+        cmdActor <! message
 
-    imp initialState
+        return! loop state
+    }
+    loop initialState 
 
-
-
-let OsagoSuperviserHandler (logger:ILogger) (state:OsagoStateItem list) (msg:ExchangeMessage)=
-    //parse messageName
-    //find processor or create it
-
-    let existingStateItem= state |> List.tryFind(fun x->x.TraceId=msg.TraceId)
-    match existingStateItem with
-    |None ->
-        let newStateItem= {
+let getCardProcessorActor  (logger:ILogger) (mailbox:Actor<ExchangeMessage>) traceId=   
+    let initialState=
+        {
             CreationDate=DateTime.Now;
             LastUpdateDate=DateTime.Now;
-            TraceId=msg.TraceId;
-            DataJson=msg.BodyJson
-        }
-        newStateItem :: state
-    |_->state
+            TraceId=traceId;
+            DataJson=None
+        }    
+    findOrCreateChildActor traceId (cardProcessorHandler logger initialState) mailbox
 
-
-//let OsagoCardProcessorHandler (logger:ILogger) (state:OsagoStateItem) (msg:ExchangeMessage)=
-    
-
-let OsagoSuperviserActor (cardProcessorHandler) (logger:ILogger) (mailbox:Actor<ExchangeMessage>)=
-    
-    let getCardProcessorActor (mailbox:Actor<ExchangeMessage>) traceId=
-        let actorRef= mailbox.Context.Child(traceId)
-
-        if actorRef.IsNobody() then (cardProcessorHandler |> spawn mailbox traceId)
-        else actorRef
-
-    let rec imp (state:OsagoStateItem list)=
+let OsagoSuperviserActor (logger:ILogger) (mailbox:Actor<ExchangeMessage>)=
+    let rec imp ()=
         actor{
             let! msg=mailbox.Receive()
-                        
-            let cardProcessor=getCardProcessorActor mailbox msg.TraceId
-
-            let newState=OsagoSuperviserHandler logger state msg //mutate state
+            logger.LogInformation("A new cmdmessage in superviser {message}", msg)
+            let cardProcessor=getCardProcessorActor logger mailbox msg.TraceId
 
             cardProcessor <! msg
 
-            return! imp newState
+            return! imp()
         }
         
-    imp []
+    imp()
 
