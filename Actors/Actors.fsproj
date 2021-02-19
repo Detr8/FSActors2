@@ -5,8 +5,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="Utils\JsonUtils.fs" />
     <Compile Include="Types\Messages.fs" />
+    <Compile Include="Utils\MessageUtils.fs" />
+    <Compile Include="Utils\JsonUtils.fs" />
+    <Compile Include="Actors\CmdHandlers.fs" />
+    <Compile Include="Actors\CmdActorRouting.fs" />
     <Compile Include="Actors\OsagoSuperviser.fs" />
     <Compile Include="Workers\MainWorker.fs" />
     <Compile Include="Startup.fs" />

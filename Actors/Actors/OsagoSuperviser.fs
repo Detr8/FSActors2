@@ -22,12 +22,27 @@ let cmdActorHandler (logger:ILogger) state (mailbox:Actor<ExchangeMessage>)=
     loop state
 
 let getCmdActor (logger:ILogger) state message (mailbox: Actor<ExchangeMessage>) =  
-    findOrCreateChildActor message.Name (cmdActorHandler logger state) mailbox
+    //findOrCreateChildActor message.Name (cmdActorHandler logger state) mailbox
+    findOrCreateChildActor message.Name (CmdActorRouting.GetCmdActorHandler logger message state) mailbox
 
 let cardProcessorHandler (logger:ILogger) initialState (mailbox: Actor<ExchangeMessage>) = 
+    
+    let (|Inner|Result|Request|) (cmdName:string)=
+        match cmdName with
+        |"saveAndCalc"|"saveAndIssue"->Request
+        |c when c.EndsWith("Result") ->Result
+        |_->Inner
+    
     let rec loop state = actor {
         let! message = mailbox.Receive ()      
         logger.LogInformation("A new cmdmessage in cardProcessor {message}", message)
+
+        (*
+            parse cmd
+            find actor
+            each actor can handle cmd, cmdResult and other
+        *)
+
         if message.Name="enrich" then 
             printfn $"enrich state for %s{message.TraceId}"
             return! loop {state with LastUpdateDate=DateTime.Now} //enrich body
