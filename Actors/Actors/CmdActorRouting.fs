@@ -24,5 +24,5 @@ let GetCmdActorHandler (logger:ILogger) (msg: ExchangeMessage) state (mailbox:Ac
 
     match cmd with
     |FastCalcIC 
-    |FastCalcResult -> CmdActoryBody logger state mailbox
+    |FastCalcResult -> CmdHandlers.CalcFastHandler logger state mailbox
     |_ ->CmdActoryBody logger state mailbox

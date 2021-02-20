@@ -5,10 +5,13 @@ open Akka.FSharp
 open Messages
 open Akka.Actor
 
-let findOrCreateChildActor name handler (mailbox: Actor<ExchangeMessage>)=
+let findOrCreateChildActor (logger:ILogger) name handler (mailbox: Actor<ExchangeMessage>)=
     let existingActor=mailbox.Context.Child(name)
-    if existingActor.IsNobody() then (handler |> spawn mailbox name)
-    else existingActor
+    if existingActor.IsNobody() then 
+        logger.LogInformation("{name} actor has been created", name)
+        (handler |> spawn mailbox name)
+    else 
+        existingActor
 
 let cmdActorHandler (logger:ILogger) state (mailbox:Actor<ExchangeMessage>)=
     let rec loop state=actor{
@@ -21,17 +24,22 @@ let cmdActorHandler (logger:ILogger) state (mailbox:Actor<ExchangeMessage>)=
     }
     loop state
 
-let getCmdActor (logger:ILogger) state message (mailbox: Actor<ExchangeMessage>) =  
+let getCmdActor (logger:ILogger) (state:OsagoStateItem) message (mailbox: Actor<ExchangeMessage>) =  
     //findOrCreateChildActor message.Name (cmdActorHandler logger state) mailbox
-    findOrCreateChildActor message.Name (CmdActorRouting.GetCmdActorHandler logger message state) mailbox
+    findOrCreateChildActor logger message.Name (CmdActorRouting.GetCmdActorHandler logger message state) mailbox
 
 let cardProcessorHandler (logger:ILogger) initialState (mailbox: Actor<ExchangeMessage>) = 
     
-    let (|Inner|Result|Request|) (cmdName:string)=
-        match cmdName with
-        |"saveAndCalc"|"saveAndIssue"->Request
-        |c when c.EndsWith("Result") ->Result
-        |_->Inner
+    let (|Inner|External|) (cmdName:string)=
+        let cmd=MessageUtils.ParseMsg cmdName
+        match cmd with
+        |Other ->
+            match cmdName.ToLower() with
+            |"enrichstate"->Inner
+            |_->Inner
+        |_->External
+
+        
     
     let rec loop state = actor {
         let! message = mailbox.Receive ()      
@@ -42,13 +50,17 @@ let cardProcessorHandler (logger:ILogger) initialState (mailbox: Actor<ExchangeM
             find actor
             each actor can handle cmd, cmdResult and other
         *)
-
-        if message.Name="enrich" then 
-            printfn $"enrich state for %s{message.TraceId}"
-            return! loop {state with LastUpdateDate=DateTime.Now} //enrich body
-        
-        let cmdActor=getCmdActor logger state message mailbox
-        cmdActor <! message
+        match message.Name with
+        |Inner -> 
+            //check enrichstate
+            if message.Name.ToLower()="enrichstate" then 
+                logger.LogInformation("enrich state for card {message.TraceId}", message.TraceId)
+                return! loop {state with LastUpdateDate=DateTime.Now} //enrich body
+            
+            ()
+        |External->
+            let cmdActor=getCmdActor logger state message mailbox
+            cmdActor <! message
 
         return! loop state
     }
@@ -62,7 +74,7 @@ let getCardProcessorActor  (logger:ILogger) (mailbox:Actor<ExchangeMessage>) tra
             TraceId=traceId;
             DataJson=None
         }    
-    findOrCreateChildActor traceId (cardProcessorHandler logger initialState) mailbox
+    findOrCreateChildActor logger traceId (cardProcessorHandler logger initialState) mailbox
 
 let OsagoSuperviserActor (logger:ILogger) (mailbox:Actor<ExchangeMessage>)=
     let rec imp ()=
